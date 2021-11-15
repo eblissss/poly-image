@@ -20,6 +20,9 @@ def main():
 
     colorThresh = 128
 
+    obj = True
+    simple = False
+
     # Import image
     try:
         inputImg = cv2.imread(sys.argv[1], 0)
@@ -44,7 +47,7 @@ def main():
     stepX = width / samplesX
     stepY = height / samplesY
 
-    verts = sampleImage(samplesX, samplesY, stepX, stepY, colorThresh, inputImg)
+    sampleVerts = sampleImage(samplesX, samplesY, stepX, stepY, colorThresh, inputImg)
 
     # Override output size
     height *= 2
@@ -56,11 +59,17 @@ def main():
     newImg = np.full((height, width, 3), colorA, dtype=np.uint8)
 
     # March
-    #simpleMarch(samplesX, samplesY, stepX, stepY, verts, newImg, colorB)
-    imageMarch(samplesX, samplesY, stepX, stepY, verts, newImg, colorB)
+    if (simple):
+        verts = simpleMarch(samplesX, samplesY, stepX, stepY, sampleVerts, newImg, colorB)
+    else:
+        verts = imageMarch(samplesX, samplesY, stepX, stepY, sampleVerts, newImg, colorB)
     
-    # Write output image
-    cv2.imwrite("poly" + sys.argv[1], newImg) 
+    if (obj):
+        # Create OBJ
+        createObj(verts)
+    else:
+        # Write output image
+        cv2.imwrite("poly" + sys.argv[1], newImg) 
 
 
 # Sample the image at designated steps
@@ -152,7 +161,7 @@ def imageMarch(samplesX, samplesY, sX, sY, v, newImg, colorB):
             elif case == 1:
                 verts = np.array([[j, i+0.5],
                                   [j, i+1],
-                                  [j+0.5, i+1]])                
+                                  [j+0.5, i+1]])           
             elif case == 2:
                 verts = np.array([[j+0.5, i+1], 
                                   [j+1, i+1],
@@ -288,30 +297,32 @@ def imageMarch(samplesX, samplesY, sX, sY, v, newImg, colorB):
                     tri = tri.reshape((-1, 1, 2)).astype(int)
                     cv2.fillPoly(newImg, [tri], colorB, lineType=cv2.LINE_AA)
 
-    #createObj(vertArray)
-    
+    return vertArray
 
-### Idea for making *efficient* obj file
-# 1. Go over all verts and add to hash table (dict) if new
-#    i. If new, give new index and add
-#    ii. If old, nothing
-# 2. Go through hash table and add to obj file as verts
-# 3. Use hash table lookup to add faces
+# Create OBJ file from verts
 def createObj(vertArray):
     
+    # Create a dict so no copying of verts
     vertDict = {}
     for point in vertArray:
         tp = tuple(point)
         if tp not in vertDict:
             vertDict[tp] = 0
+
+    f = open("output.obj", "w")
+    f.write("# Output from polyimage.py\n#\n\n")
     
     for i, point in enumerate(vertDict):
-        vertDict[point] = i
+        vertDict[point] = i + 1
         # Write points to file
-
-    for i in len(vertArray / 3):
-        #Write to file: (vertDict[i*3], vertDict[i*3+1], vertDict[i*3+2])
-        pass
+        f.write("v {x:4.3f} {y:4.3f} {z:4.3f}\n".format(x=point[0], y=point[1], z=0))
+        
+    f.write("\n")
+    for i in range(len(vertArray) // 3):
+        #Write faces to file
+        f.write("f {v1:d} {v2:d} {v3:d}\n".format(v1=vertDict[tuple(vertArray[i*3])], 
+                                                  v2=vertDict[tuple(vertArray[i*3+1])], 
+                                                  v3=vertDict[tuple(vertArray[i*3+2])]))
 
 
 
@@ -322,6 +333,7 @@ def simpleMarch(samplesX, samplesY, sX, sY, v, newImg, colorB):
     #     x x     x o     o x     x x     x x
 
     # Do the marching (as Top-Left)
+    vertArray = np.empty((0,2))
     for i in range(samplesY-1):
         for j in range(samplesX-1):
             case = 0
@@ -372,7 +384,7 @@ def simpleMarch(samplesX, samplesY, sX, sY, v, newImg, colorB):
 
             # Draw verts
             if case != 0:
-                #vertArray = np.append(vertArray, verts, axis=0)
+                vertArray = np.append(vertArray, verts, axis=0)
                 verts = verts.astype(float)
                 verts[:,0] *= sX
                 verts[:,1] *= sY
@@ -380,6 +392,7 @@ def simpleMarch(samplesX, samplesY, sX, sY, v, newImg, colorB):
                     tri = tri.reshape((-1, 1, 2)).astype(int)
                     cv2.fillPoly(newImg, [tri], colorB, lineType=cv2.LINE_AA)
 
+    return vertArray
 
 if __name__ == "__main__":
     main()
